@@ -19,13 +19,15 @@ with open('token.txt','r') as file:
 
 updater = ext.Updater(API, use_context = True)
 
-notices = []
+notices = {}
 
 
 
 def start(update, context):
     update.message.reply_text(
         "Welcome to Stonks bot ! Use /help for instructions.")
+    user = update.message.chat_id
+    notices[user] = []
 
 def help(update, context):
     update.message.reply_text(
@@ -39,55 +41,55 @@ def help(update, context):
         """)
 
 
-def stock_price(update,context):
+def stock_price(update, context):
+    input = str.upper(context.args[0])
+    try:
+        ticker = reader.DataReader(input, 'yahoo')
+        price = ticker.iloc[-1]['Close']
 
-        input = str.upper(context.args[0])
-
+    except:
+        input = str.lower(input)
         try:
-            ticker = reader.DataReader(input, 'yahoo')
-            price = ticker.iloc[-1]['Close']
-
+            price = coingecko.get_price(ids = input, vs_currencies = 'usd')[input]['usd']
 
         except:
-            input = str.lower(input)
-            try:
-                price = coingecko.get_price(ids = input, vs_currencies = 'usd')[input]['usd']
+            price = 'No such ticker'
+    if price == 'No such ticker':
+        update.message.reply_text(price)
+    else:
+        update.message.reply_text(f"The current price of {input} is {price}.")
 
-            except:
-                price = 'No such ticker'
-        if price == 'No such ticker':
-            update.message.reply_text(price)
-        else:
-            update.message.reply_text(f"The current price of {input} is {price}.")
-
-        # receive = False
+    # receive = False
 
 def display_alerts(update, context):
     response = 'Your current alerts are: \n\n'
     id = 1
-    for alert in notices:
+    user = update.message.chat_id
+    for alert in notices[user]:
         response += f"{id}. {alert[0]} {alert[1]} {alert[2]} \n"
         id += 1
 
     update.message.reply_text(response)
 
-def remove_alert(update, context):
 
+def remove_alert(update, context):
     removal = int(context.args[0])
     del notices[removal - 1]
 
     new_response = "Successfully removed."
     update.message.reply_text(new_response)
 
+
 def set_alerts(update, context):
     if len(context.args) > 2:
         ticker = str.upper(context.args[0])
         sign = context.args[1]
         price = context.args[2]
-        notices.append([ticker,sign,price]) #added
+        user = update.message.chat_id
+        notices[user].append((ticker, sign, price)) #added
 
-        for alert in notices: #changed
-            context.job_queue.run_repeating(stocknotif, interval = 15, first = 5, context = [alert[0],alert[1],alert[2],update.message.chat_id]) #changed
+        for alert in notices[user]: #changed
+            context.job_queue.run_repeating(stocknotif, interval = 15, first = 5, context = [alert[0],alert[1],alert[2], update.message.chat_id]) #changed
         try:
             response = f"Success. The current price of {ticker} is {float(reader.DataReader(ticker,'yahoo').iloc[-1]['Close'])}."
         except:
@@ -107,7 +109,7 @@ def stocknotif(context):
 
     ping = False
     try:
-        current_price = reader.DataReader(ticker,'yahoo').iloc[-1]['Close']
+        current_price = reader.DataReader(ticker, 'yahoo').iloc[-1]['Close']
     except:
         ticker = str.lower(ticker)
         current_price = coingecko.get_price(ids = ticker, vs_currencies = 'usd')[ticker]['usd']
@@ -121,7 +123,7 @@ def stocknotif(context):
 
     if ping:
         response = f'Target price for {ticker} at {price} reached. The current price is {current_price}.'
-        notices.remove([str.upper(ticker),sign,price]) #new
+        notices[chat_id].remove((str.upper(ticker),sign,price)) #new
         context.job.schedule_removal()
         context.bot.send_message(chat_id = chat_id, text = response)
 
